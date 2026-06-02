@@ -31,53 +31,62 @@ const getOpenBalanceFromLineEx = (lineEx) => {
   } catch { return null; }
 };
 
-const CREDIT_TYPES = ['VendorCredit', 'JournalEntry', 'Deposit', 'CreditCardCredit', 'Transfer'];
+// Outstanding/Linked side types (transactions being paid)
+const LINKED_TYPES = ['Bill', 'JournalEntry', 'Deposit', 'Check', 'Purchase', 'SalesReceipt', 'Charge'];
 
-// ── Credit entity details fetch karo by ID + Type ──
-const fetchCreditDetails = async (accessToken, realmId, txnId, txnType) => {
+// Credit side types
+const CREDIT_TYPES = ['VendorCredit'];
+
+// Entity details fetch karo by type
+const fetchEntityDetails = async (accessToken, realmId, txnId, txnType) => {
   try {
-    const { qboClient } = await import('./qboClient.js');
     const client = qboClient(accessToken, realmId);
     let endpoint = '';
 
     if (txnType === 'VendorCredit') endpoint = `/vendorcredit/${txnId}`;
     else if (txnType === 'JournalEntry') endpoint = `/journalentry/${txnId}`;
     else if (txnType === 'Deposit') endpoint = `/deposit/${txnId}`;
-    else return {};
+    else if (txnType === 'Bill') endpoint = `/bill/${txnId}`;
+    else if (txnType === 'Check') endpoint = `/purchase/${txnId}`;  // ← QBO mein Check = Purchase
+    else if (txnType === 'Purchase') endpoint = `/purchase/${txnId}`;
+    else {
+      // Unknown type — sirf ID return karo
+      return { docNumber: txnId, txnDate: '', totalAmt: '' };
+    }
 
     const res = await client.get(`${endpoint}?minorversion=75`);
-
-    // Har entity ka data alag field mein hota hai
     const entity = res.data?.VendorCredit
       || res.data?.JournalEntry
       || res.data?.Deposit
+      || res.data?.Bill
+      || res.data?.Purchase
       || {};
 
-    console.log(`📦 Raw entity keys:`, Object.keys(entity)); // ← Debug ke liye
-
-    // JournalEntry mein total calculate karna padta hai Lines se
     let totalAmt = entity.TotalAmt || entity.TotalAmount || '';
 
     if (txnType === 'JournalEntry' && !totalAmt) {
-      // JournalEntry Lines se Credit side total nikalo
       const lines = entity.Line || [];
-      const creditLines = lines.filter(l => l.JournalEntryLineDetail?.PostingType === 'Credit');
+      const creditLines = lines.filter(l =>
+        l.JournalEntryLineDetail?.PostingType === 'Credit'
+      );
       totalAmt = creditLines.reduce((sum, l) => sum + (l.Amount || 0), 0) || '';
     }
 
     return {
-      docNumber: entity.DocNumber || txnId,
+      docNumber: entity.DocNumber
+        || (txnType === 'Deposit' ? `DEP-${txnId}` : txnId),
       txnDate: entity.TxnDate || '',
       totalAmt: totalAmt,
     };
   } catch (err) {
     console.log(`❌ Error fetching ${txnType} ${txnId}:`, err.message);
-    return {};
+    return { docNumber: txnId, txnDate: '', totalAmt: '' };
   }
 };
 
 export const fetchBillAllocations = async (accessToken, realmId) => {
   const results = [];
+  const entityCache = {};
 
   // ── Bill map ──
   const bills = await fetchAllRecords(accessToken, realmId, 'Bill');
@@ -103,23 +112,144 @@ export const fetchBillAllocations = async (accessToken, realmId) => {
     };
   }
 
+  // Helper — entity details cache se lo
+  const getEntityDetails = async (txnId, txnType) => {
+    const key = `${txnType}_${txnId}`;
+    if (!entityCache[key]) {
+      // VendorCredit map mein check karo pehle
+      if (txnType === 'VendorCredit' && vendorCreditMap[txnId]) {
+        entityCache[key] = vendorCreditMap[txnId];
+      } else {
+        entityCache[key] = await fetchEntityDetails(accessToken, realmId, txnId, txnType);
+      }
+    }
+    return entityCache[key];
+  };
+
   // ── BillPayments ──
   const billPayments = await fetchAllRecords(accessToken, realmId, 'BillPayment');
   console.log(`✅ BillPayments fetched: ${billPayments.length}`);
 
-  // ── Credit details cache — extra API calls avoid karo ──
-  const creditCache = {};
+  // for (const bp of billPayments) {
+   
+  //   const lines = bp.Line || [];
 
-  for (const bp of billPayments) {
+  //   lines.forEach(line => {
+  //     (line.LinkedTxn || []).forEach(txn => {
+  //       console.log(`BP ${bp.Id} → TxnType: ${txn.TxnType}, TxnId: ${txn.TxnId}`);
+  //     });
+  //   });
+
+  //   // Credit side — VendorCredit only
+  //   const creditLines = lines.filter(l =>
+  //     (l.LinkedTxn || []).some(lt => CREDIT_TYPES.includes(lt.TxnType))
+  //   );
+
+  //   // Linked/Outstanding side — Bill, JournalEntry, Deposit
+  //   const linkedLines = lines.filter(l =>
+  //     (l.LinkedTxn || []).some(lt => LINKED_TYPES.includes(lt.TxnType))
+  //   );
+
+  //   // Sirf credit wali payments process karo
+  //   if (creditLines.length === 0) continue;
+
+  //   for (const creditLine of creditLines) {
+  //     const creditTxn = (creditLine.LinkedTxn || []).find(lt =>
+  //       CREDIT_TYPES.includes(lt.TxnType)
+  //     );
+  //     if (!creditTxn) continue;
+
+  //     // Credit details
+  //     const creditRef = await getEntityDetails(creditTxn.TxnId, creditTxn.TxnType);
+  //     const creditNo = getRefFromLineEx(creditLine.LineEx) || creditRef?.docNumber || creditTxn.TxnId;
+  //     const creditDate = creditRef?.txnDate || '';
+  //     const creditTotal = creditRef?.totalAmt || '';
+
+  //     if (linkedLines.length > 0) {
+  //       // Har linked entity ke saath ek row
+  //       for (const linkedLine of linkedLines) {
+  //         const linkedTxn = (linkedLine.LinkedTxn || []).find(lt =>
+  //           LINKED_TYPES.includes(lt.TxnType)
+  //         );
+  //         if (!linkedTxn) continue;
+
+  //         // Linked entity details fetch karo
+  //         let linkedRef = {};
+  //         if (linkedTxn.TxnType === 'Bill') {
+  //           linkedRef = billMap[linkedTxn.TxnId] || {};
+  //         } else {
+  //           linkedRef = await getEntityDetails(linkedTxn.TxnId, linkedTxn.TxnType);
+  //         }
+
+  //         const linkedRefNo = getRefFromLineEx(linkedLine.LineEx) || linkedRef?.docNumber || linkedTxn.TxnId;
+  //         const linkedDate = linkedRef?.txnDate || '';
+
+  //         results.push({
+  //           PAYMENT_ID: bp.Id,
+  //           REFERENCE_NO: bp.DocNumber || bp.Id,
+  //           NAME: bp.VendorRef?.name || creditRef?.vendorName || '',
+  //           ALLOCATION_DATE: bp.TxnDate || '',
+  //           CREDIT_NOTE_ID: creditTxn.TxnId,         // Credit side ID
+  //           CREDIT_NOTE_NO: creditNo,                 // Credit side DocNumber
+  //           LINKED_REF_NO: linkedRefNo,              // Linked side DocNumber (Journal #9 / Bill #8001)
+  //           LINKED_TXN_ID: linkedTxn.TxnId,          // Linked side ID
+  //           APPLIED_AMOUNT: getOpenBalanceFromLineEx(linkedLine.LineEx) ?? linkedLine.Amount,
+  //           CREDIT_LINK_TYPE: creditTxn.TxnType,        // ← VendorCredit (credit side type)
+  //           LINKED_TYPE: linkedTxn.TxnType,        // ← JournalEntry / Bill (linked side type)
+  //           TOTAL: creditTotal,
+  //         });
+  //       }
+  //     } else {
+  //       // Linked nahi — standalone credit row
+  //       results.push({
+  //         PAYMENT_ID: bp.Id,
+  //         REFERENCE_NO: bp.DocNumber || bp.Id,
+  //         NAME: bp.VendorRef?.name || creditRef?.vendorName || '',
+  //         ALLOCATION_DATE: bp.TxnDate || '',
+  //         CREDIT_NOTE_ID: creditTxn.TxnId,
+  //         CREDIT_NOTE_NO: creditNo,
+  //         LINKED_REF_NO: '',
+  //         LINKED_TXN_ID: '',
+  //         APPLIED_AMOUNT: creditLine.Amount,
+  //         CREDIT_LINK_TYPE: creditTxn.TxnType,
+  //         LINKED_TYPE: '',
+  //         TOTAL: creditTotal,
+  //       });
+  //     }
+  //   }
+  // }
+
+    for (const bp of billPayments) {
+
+    console.log(
+      "=============================="
+    );
+
+    console.log(
+      JSON.stringify(bp, null, 2)
+    );
+
     const lines = bp.Line || [];
 
+    lines.forEach(line => {
+      (line.LinkedTxn || []).forEach(txn => {
+        console.log(
+          `BP ${bp.Id} → TxnType: ${txn.TxnType}, TxnId: ${txn.TxnId}`
+        );
+      });
+    });
+
+    // Credit side — VendorCredit only
     const creditLines = lines.filter(l =>
       (l.LinkedTxn || []).some(lt => CREDIT_TYPES.includes(lt.TxnType))
     );
-    const billLines = lines.filter(l =>
-      (l.LinkedTxn || []).some(lt => lt.TxnType === 'Bill')
+
+    // Linked/Outstanding side — Bill, JournalEntry, Deposit
+    const linkedLines = lines.filter(l =>
+      (l.LinkedTxn || []).some(lt => LINKED_TYPES.includes(lt.TxnType))
     );
 
+    // Sirf credit wali payments process karo
     if (creditLines.length === 0) continue;
 
     for (const creditLine of creditLines) {
@@ -128,51 +258,48 @@ export const fetchBillAllocations = async (accessToken, realmId) => {
       );
       if (!creditTxn) continue;
 
-      // VendorCredit map mein check karo pehle
-      let creditRef = vendorCreditMap[creditTxn.TxnId] || null;
-
-      // Agar nahi mila (JournalEntry/Deposit) toh API se fetch karo
-      if (!creditRef) {
-        const cacheKey = `${creditTxn.TxnType}_${creditTxn.TxnId}`;
-        if (!creditCache[cacheKey]) {
-          console.log(`🔍 Fetching ${creditTxn.TxnType} ID: ${creditTxn.TxnId}`);
-          creditCache[cacheKey] = await fetchCreditDetails(
-            accessToken, realmId, creditTxn.TxnId, creditTxn.TxnType
-          );
-          console.log(`📦 Result:`, JSON.stringify(creditCache[cacheKey])); // ← Yeh add karo
-        }
-        creditRef = creditCache[cacheKey];
-      }
-
+      // Credit details
+      const creditRef = await getEntityDetails(creditTxn.TxnId, creditTxn.TxnType);
       const creditNo = getRefFromLineEx(creditLine.LineEx) || creditRef?.docNumber || creditTxn.TxnId;
       const creditDate = creditRef?.txnDate || '';
       const creditTotal = creditRef?.totalAmt || '';
 
-      if (billLines.length > 0) {
-        for (const billLine of billLines) {
-          const billTxn = (billLine.LinkedTxn || []).find(lt => lt.TxnType === 'Bill');
-          if (!billTxn) continue;
+      if (linkedLines.length > 0) {
+        // Har linked entity ke saath ek row
+        for (const linkedLine of linkedLines) {
+          const linkedTxn = (linkedLine.LinkedTxn || []).find(lt =>
+            LINKED_TYPES.includes(lt.TxnType)
+          );
+          if (!linkedTxn) continue;
 
-          const billRef = billMap[billTxn.TxnId] || {};
-          const billNo = getRefFromLineEx(billLine.LineEx) || billRef.docNumber || billTxn.TxnId;
-          const billDate = billRef.txnDate || '';
+          // Linked entity details fetch karo
+          let linkedRef = {};
+          if (linkedTxn.TxnType === 'Bill') {
+            linkedRef = billMap[linkedTxn.TxnId] || {};
+          } else {
+            linkedRef = await getEntityDetails(linkedTxn.TxnId, linkedTxn.TxnType);
+          }
+
+          const linkedRefNo = getRefFromLineEx(linkedLine.LineEx) || linkedRef?.docNumber || linkedTxn.TxnId;
+          const linkedDate = linkedRef?.txnDate || '';
 
           results.push({
             PAYMENT_ID: bp.Id,
             REFERENCE_NO: bp.DocNumber || bp.Id,
             NAME: bp.VendorRef?.name || creditRef?.vendorName || '',
             ALLOCATION_DATE: bp.TxnDate || '',
-            CREDIT_NOTE_ID: creditTxn.TxnId,
-            CREDIT_NOTE_NO: creditNo,
-            LINKED_REF_NO: billNo,
-            LINKED_TXN_ID: billTxn.TxnId,
-            APPLIED_AMOUNT: getOpenBalanceFromLineEx(billLine.LineEx) ?? billLine.Amount,
-            CREDIT_LINK_TYPE: billTxn.TxnType,       // "Bill"
-            LINKED_TYPE: creditTxn.TxnType,     // "VendorCredit/JournalEntry/Deposit"
+            CREDIT_NOTE_ID: creditTxn.TxnId,         // Credit side ID
+            CREDIT_NOTE_NO: creditNo,                 // Credit side DocNumber
+            LINKED_REF_NO: linkedRefNo,              // Linked side DocNumber (Journal #9 / Bill #8001)
+            LINKED_TXN_ID: linkedTxn.TxnId,          // Linked side ID
+            APPLIED_AMOUNT: getOpenBalanceFromLineEx(linkedLine.LineEx) ?? linkedLine.Amount,
+            CREDIT_LINK_TYPE: creditTxn.TxnType,        // ← VendorCredit (credit side type)
+            LINKED_TYPE: linkedTxn.TxnType,        // ← JournalEntry / Bill (linked side type)
             TOTAL: creditTotal,
           });
         }
       } else {
+        // Linked nahi — standalone credit row
         results.push({
           PAYMENT_ID: bp.Id,
           REFERENCE_NO: bp.DocNumber || bp.Id,
@@ -183,14 +310,13 @@ export const fetchBillAllocations = async (accessToken, realmId) => {
           LINKED_REF_NO: '',
           LINKED_TXN_ID: '',
           APPLIED_AMOUNT: creditLine.Amount,
-          CREDIT_LINK_TYPE: '',
-          LINKED_TYPE: creditTxn.TxnType,     // "VendorCredit/JournalEntry/Deposit"
+          CREDIT_LINK_TYPE: creditTxn.TxnType,
+          LINKED_TYPE: '',
           TOTAL: creditTotal,
         });
       }
     }
   }
-
   console.log(`✅ Final bill allocation records: ${results.length}`);
   return results;
 };
