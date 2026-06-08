@@ -8,6 +8,13 @@ const api = axios.create({
 export const getAuthUrl = () => api.get('/api/auth/url')
 export const checkAuth = () => api.get('/api/auth/check')
 export const logout = () => api.post('/api/auth/logout')
+export const getAPOverpayments = () => api.get('/api/allocation/overpayment/ap')
+export const getAROverpayments = () => api.get('/api/allocation/overpayment/ar')
+
+export const exportAPOverpayments = () =>
+  api.get('/api/allocation/overpayment/ap/export', { responseType: 'blob' })
+export const exportAROverpayments = () =>
+  api.get('/api/allocation/overpayment/ar/export', { responseType: 'blob' })
 
 export const getInvoiceAllocations = () => api.get('/api/allocation/invoice')
 export const exportInvoiceAllocations = () =>

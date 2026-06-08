@@ -15,7 +15,7 @@ const getInvoiceAllocations =
           req.realmId
         );
 
-        console.log("data : ",data)
+        
 
         
 

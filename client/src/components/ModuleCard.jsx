@@ -19,6 +19,14 @@ const colorConfig = {
     badge: 'bg-purple-100 text-purple-700 border-purple-200',
     progress: 'bg-purple-600',
   },
+  green: {
+    bg: 'bg-green-50',
+    border: 'border-green-200',
+    iconBg: 'bg-green-100',                        // ✅
+    btnPrimary: 'bg-green-600 hover:bg-green-700', // ✅
+    badge: 'bg-green-100 text-green-700 border-green-200', // ✅
+    progress: 'bg-green-600',                      // ✅
+  },
   orange: {
     bg: 'bg-orange-50',
     border: 'border-orange-200',
