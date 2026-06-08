@@ -1,6 +1,6 @@
 import { Download, RefreshCw } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
-import DataPreviewTable from './DataPreviewTable';
+// import DataPreviewTable from './DataPreviewTable';
 
 const colorConfig = {
   blue: {
@@ -55,7 +55,7 @@ export default function ModuleCard({
   return (
     <div
       className={`${config.bg} border ${config.border} rounded-2xl p-6
-                  transition-all duration-300 hover:shadow-lg hover:scale-[1.02]`}
+                 transition-all duration-300 hover:shadow-lg hover:scale-[1.02]`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -101,9 +101,9 @@ export default function ModuleCard({
       )}
 
       {/* Preview Table */}
-      {hasData && !loading && (
-        <DataPreviewTable data={data} />
-      )}
+      {/* {hasData && !loading && (
+        <DataPreviewTable  data={data} />
+      )} */}
 
       {/* Buttons */}
       <div className="flex flex-col gap-3 mt-5">

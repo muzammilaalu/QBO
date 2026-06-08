@@ -63,7 +63,7 @@ export const getAROverpayments = async (req, res) => {
   try {
     const data = await fetchAROverpayments(req.accessToken, req.realmId);
     res.json({ success: true, count: data.length, data });
-    console.log("data", data)
+   
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
