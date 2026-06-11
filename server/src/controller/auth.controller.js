@@ -1,5 +1,6 @@
 import OAuthClient from "intuit-oauth";
 import config from "../config/qbo.config.js";
+import { clearCacheForRealm } from '../config/database.js';
 
 const oauthClient =
   new OAuthClient({
@@ -43,46 +44,82 @@ const handleCallback = async (req, res) => {
 
     const tokens = authResponse.getJson();
 
-    req.session.accessToken = tokens.access_token;
-    req.session.refreshToken = tokens.refresh_token;  // ✅ Refresh token bhi save karo
-    req.session.realmId = req.query.realmId;
-    req.session.companyName = 'Sandbox Company';
+    req.session.accessToken  = tokens.access_token;
+    req.session.refreshToken = tokens.refresh_token;
+    req.session.realmId      = req.query.realmId;
+    req.session.companyName  = 'Production Company';
 
-    // Session explicitly save karo redirect se pehle
     req.session.save((err) => {
       if (err) {
-        console.error('Session save error:', err);
+       
         return res.status(500).json({ error: 'Session save failed' });
       }
-      res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+
+      // ✅ Token ko temporary query param se pass karo
+      const tempToken = Buffer.from(JSON.stringify({
+        accessToken:  tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        realmId:      req.query.realmId,
+      })).toString('base64');
+
+      res.redirect(`${process.env.FRONTEND_URL}/dashboard?auth=${tempToken}`);
     });
 
   } catch (err) {
+    console.error('❌ Callback error:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
 const checkAuth = (req, res) => {
-  const isAuth = !!(
-    req.session?.accessToken &&
-    req.session?.realmId
-  );
+ 
 
+  const isAuth = !!(req.session?.accessToken && req.session?.realmId);
   res.json({
     isAuthenticated: isAuth,
-    // Frontend ko company info bhi do
-    companyName: req.session?.companyName || 'Sandbox Company',
+    companyName: req.session?.companyName || 'Production Company',
     realmId: req.session?.realmId || null,
   });
 };
 
+// const logout = (req, res) => {
+//   req.session.destroy((err) => {
+//     if (err) {
+//       return res.status(500).json({ error: 'Logout failed' });
+//     }
+//     res.clearCookie('connect.sid');
+//     res.json({ message: 'Logged out successfully' });
+//   });
+// };
+
 const logout = (req, res) => {
+  const realmId = req.session?.realmId;
+  if (realmId) clearCacheForRealm(realmId).catch(console.error);
+
   req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: 'Logout failed' });
-    }
+    if (err) return res.status(500).json({ error: 'Logout failed' });
     res.clearCookie('connect.sid');
     res.json({ message: 'Logged out successfully' });
+  });
+};
+
+const setSession = (req, res) => {
+  const { accessToken, refreshToken, realmId } = req.body;
+
+  if (!accessToken || !realmId) {
+    return res.status(400).json({ error: 'Missing token or realmId' });
+  }
+
+  req.session.accessToken  = accessToken;
+  req.session.refreshToken = refreshToken;
+  req.session.realmId      = realmId;
+  req.session.companyName  = 'Production Company';
+
+  req.session.save((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Session save failed' });
+    }
+    res.json({ success: true });
   });
 };
 
@@ -91,4 +128,5 @@ export {
   handleCallback,
   checkAuth,
   logout,
+  setSession
 };

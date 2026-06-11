@@ -5,6 +5,7 @@ import {
   handleCallback,
   checkAuth,
   logout,
+  setSession
 } from "../controller/auth.controller.js";
 
 const router =
@@ -29,5 +30,6 @@ router.post(
   "/logout",
   logout
 );
+router.post('/set-session', setSession);
 
 export default router;

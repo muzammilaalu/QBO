@@ -1,72 +1,101 @@
-import {
-  fetchInvoiceAllocations,
-} from "../service/invoiceAllocation.service.js";
+// import {
+//   fetchInvoiceAllocations,
+// } from "../service/invoiceAllocation.service.js";
 
-import {
-  generateExcel,
-} from "../service/excel.service.js";
+// import {
+//   generateExcel,
+// } from "../service/excel.service.js";
 
-const getInvoiceAllocations =
-  async (req, res) => {
-    try {
-      const data =
-        await fetchInvoiceAllocations(
-          req.accessToken,
-          req.realmId
-        );
-
-        
+// const getInvoiceAllocations =
+//   async (req, res) => {
+//     try {
+//       const data =
+//         await fetchInvoiceAllocations(
+//           req.accessToken,
+//           req.realmId
+//         );
 
         
 
-      res.json({
-        success: true,
-        count: data.length,
-        data,
-      });
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-        error: err.message,
-      });
-    }
-  };
+        
 
-const exportInvoiceAllocations =
-  async (req, res) => {
-    try {
-      const invoiceData =
-        await fetchInvoiceAllocations(
-          req.accessToken,
-          req.realmId
-        );
+//       res.json({
+//         success: true,
+//         count: data.length,
+//         data,
+//       });
+//     } catch (err) {
+//       res.status(500).json({
+//         success: false,
+//         error: err.message,
+//       });
+//     }
+//   };
 
-      const buffer =
-        await generateExcel(
-          invoiceData,
-          []
-        );
+// const exportInvoiceAllocations =
+//   async (req, res) => {
+//     try {
+//       const invoiceData =
+//         await fetchInvoiceAllocations(
+//           req.accessToken,
+//           req.realmId
+//         );
 
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      );
+//       const buffer =
+//         await generateExcel(
+//           invoiceData,
+//           []
+//         );
 
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=Invoice_Allocations_${Date.now()}.xlsx`
-      );
+//       res.setHeader(
+//         "Content-Type",
+//         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+//       );
 
-      res.send(buffer);
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-        error: err.message,
-      });
-    }
-  };
+//       res.setHeader(
+//         "Content-Disposition",
+//         `attachment; filename=Invoice_Allocations_${Date.now()}.xlsx`
+//       );
 
-export {
-  getInvoiceAllocations,
-  exportInvoiceAllocations,
+//       res.send(buffer);
+//     } catch (err) {
+//       res.status(500).json({
+//         success: false,
+//         error: err.message,
+//       });
+//     }
+//   };
+
+// export {
+//   getInvoiceAllocations,
+//   exportInvoiceAllocations,
+// };
+
+
+import { fetchInvoiceAllocations } from "../service/invoiceAllocation.service.js";
+import { generateExcel } from "../service/excel.service.js";
+
+const getInvoiceAllocations = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await fetchInvoiceAllocations(req.accessToken, req.realmId, startDate, endDate);
+    res.json({ success: true, count: data.length, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 };
+
+const exportInvoiceAllocations = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const invoiceData = await fetchInvoiceAllocations(req.accessToken, req.realmId, startDate, endDate);
+    const buffer = await generateExcel(invoiceData, []);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Invoice_Allocations_${Date.now()}.xlsx`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export { getInvoiceAllocations, exportInvoiceAllocations };

@@ -6,6 +6,7 @@ import StatsBar from '../components/StatsBar';
 import ModuleCard from '../components/ModuleCard';
 import { Shield } from 'lucide-react';
 import Modal from '../components/Modal';
+import axios from 'axios';
 import {
   checkAuth,
   logout,
@@ -30,6 +31,8 @@ export default function Dashboard() {
   const [billState, setBillState] = useState({ loading: false, exporting: false });
   const [apState, setApState] = useState({ loading: false, exporting: false });
   const [arState, setArState] = useState({ loading: false, exporting: false });
+  const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
+
 
   const [modal, setModal] = useState({ open: false, title: '', data: null, exportFn: null, filename: '', state: null, setState: null });
 
@@ -39,13 +42,44 @@ export default function Dashboard() {
 
   const closeModal = () => setModal(prev => ({ ...prev, open: false }));
 
+  // useEffect(() => {
+  //   const fetchAuth = async () => {
+  //     try {
+  //       const res = await checkAuth();
+  //       if (res.data.isAuthenticated) {
+  //         setIsAuthenticated(true);
+  //         setCompanyName(res.data.companyName || 'Sandbox Company');
+  //         setLastSync(new Date().toLocaleTimeString());
+  //       } else {
+  //         navigate('/');
+  //       }
+  //     } catch {
+  //       navigate('/');
+  //     }
+  //   };
+  //   fetchAuth();
+  // }, []);
+
+
   useEffect(() => {
     const fetchAuth = async () => {
       try {
+        // ── URL mein auth token check karo ──
+        const urlParams = new URLSearchParams(window.location.search);
+        const authParam = urlParams.get('auth');
+
+        if (authParam) {
+          // Token URL mein hai — backend ko send karo session set karne ke liye
+          const decoded = JSON.parse(atob(authParam));
+          await axios.post('/api/auth/set-session', decoded, { withCredentials: true });
+          // URL clean karo
+          window.history.replaceState({}, '', '/dashboard');
+        }
+
         const res = await checkAuth();
         if (res.data.isAuthenticated) {
           setIsAuthenticated(true);
-          setCompanyName(res.data.companyName || 'Sandbox Company');
+          setCompanyName(res.data.companyName || 'Production Company');
           setLastSync(new Date().toLocaleTimeString());
         } else {
           navigate('/');
@@ -57,6 +91,7 @@ export default function Dashboard() {
     fetchAuth();
   }, []);
 
+
   const handleDisconnect = async () => {
     try {
       await logout();
@@ -67,55 +102,123 @@ export default function Dashboard() {
     }
   };
 
+  // const handleFetchInvoices = async () => {
+  //   setInvoiceState(prev => ({ ...prev, loading: true }));
+  //   try {
+  //     const res = await getInvoiceAllocations();
+  //     const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
+  //     setInvoiceState(newState);
+  //     toast.success(`${res.data.count} invoice records fetched successfully`);
+  //     openModal('Invoice Allocations', res.data.data, exportInvoiceAllocations, 'Invoice_Allocations', newState, setInvoiceState);
+  //   } catch {
+  //     setInvoiceState(prev => ({ ...prev, loading: false }));
+  //     toast.error('Failed to fetch invoice data');
+  //   }
+  // };
+  // ── handleFetch functions mein date pass karo ──
   const handleFetchInvoices = async () => {
     setInvoiceState(prev => ({ ...prev, loading: true }));
     try {
-      const res = await getInvoiceAllocations();
+      const res = await getInvoiceAllocations(dateRange.startDate, dateRange.endDate);
       const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
       setInvoiceState(newState);
       toast.success(`${res.data.count} invoice records fetched successfully`);
-      openModal('Invoice Allocations', res.data.data, exportInvoiceAllocations, 'Invoice_Allocations', newState, setInvoiceState);
+      openModal('Invoice Allocations', res.data.data,
+        () => exportInvoiceAllocations(dateRange.startDate, dateRange.endDate),
+        'Invoice_Allocations', newState, setInvoiceState);
     } catch {
       setInvoiceState(prev => ({ ...prev, loading: false }));
       toast.error('Failed to fetch invoice data');
     }
   };
 
+
+  // const handleFetchBills = async () => {
+  //   setBillState(prev => ({ ...prev, loading: true }));
+  //   try {
+  //     const res = await getBillAllocations();
+  //     const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
+  //     setBillState(newState);
+  //     toast.success(`${res.data.count} bill records fetched successfully`);
+  //     openModal('Bill Allocations', res.data.data, exportBillAllocations, 'Bill_Allocations', newState, setBillState);
+  //   } catch {
+  //     setBillState(prev => ({ ...prev, loading: false }));
+  //     toast.error('Failed to fetch bill data');
+  //   }
+  // };
+
   const handleFetchBills = async () => {
     setBillState(prev => ({ ...prev, loading: true }));
     try {
-      const res = await getBillAllocations();
+      const res = await getBillAllocations(dateRange.startDate, dateRange.endDate);
       const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
       setBillState(newState);
       toast.success(`${res.data.count} bill records fetched successfully`);
-      openModal('Bill Allocations', res.data.data, exportBillAllocations, 'Bill_Allocations', newState, setBillState);
+      openModal('Bill Allocations', res.data.data,
+        () => exportBillAllocations(dateRange.startDate, dateRange.endDate),
+        'Bill_Allocations', newState, setBillState);
     } catch {
       setBillState(prev => ({ ...prev, loading: false }));
       toast.error('Failed to fetch bill data');
     }
   };
+
+  // const handleFetchAP = async () => {
+  //   setApState(prev => ({ ...prev, loading: true }));
+  //   try {
+  //     const res = await getAPOverpayments();
+  //     const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
+  //     setApState(newState);
+  //     toast.success(`${res.data.count} AP overpayment records fetched successfully`);
+  //     openModal('AP Overpayments', res.data.data, exportAPOverpayments, 'AP_Overpayments', newState, setApState);
+  //   } catch {
+  //     setApState(prev => ({ ...prev, loading: false }));
+  //     toast.error('Failed to fetch AP overpayment data');
+  //   }
+  // };
+
+
   const handleFetchAP = async () => {
     setApState(prev => ({ ...prev, loading: true }));
     try {
-      const res = await getAPOverpayments();
+      const res = await getAPOverpayments(dateRange.startDate, dateRange.endDate);
       const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
       setApState(newState);
       toast.success(`${res.data.count} AP overpayment records fetched successfully`);
-      openModal('AP Overpayments', res.data.data, exportAPOverpayments, 'AP_Overpayments', newState, setApState);
+      openModal('AP Overpayments', res.data.data,
+        () => exportAPOverpayments(dateRange.startDate, dateRange.endDate),
+        'AP_Overpayments', newState, setApState);
     } catch {
       setApState(prev => ({ ...prev, loading: false }));
       toast.error('Failed to fetch AP overpayment data');
     }
   };
 
+  // const handleFetchAR = async () => {
+  //   setArState(prev => ({ ...prev, loading: true }));
+  //   try {
+  //     const res = await getAROverpayments();
+  //     const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
+  //     setArState(newState);
+  //     toast.success(`${res.data.count} AR overpayment records fetched successfully`);
+  //     openModal('AR Overpayments', res.data.data, exportAROverpayments, 'AR_Overpayments', newState, setArState);
+  //   } catch {
+  //     setArState(prev => ({ ...prev, loading: false }));
+  //     toast.error('Failed to fetch AR overpayment data');
+  //   }
+  // };
+
+
   const handleFetchAR = async () => {
     setArState(prev => ({ ...prev, loading: true }));
     try {
-      const res = await getAROverpayments();
+      const res = await getAROverpayments(dateRange.startDate, dateRange.endDate);
       const newState = { loading: false, exporting: false, data: res.data.data, count: res.data.count };
       setArState(newState);
       toast.success(`${res.data.count} AR overpayment records fetched successfully`);
-      openModal('AR Overpayments', res.data.data, exportAROverpayments, 'AR_Overpayments', newState, setArState);
+      openModal('AR Overpayments', res.data.data,
+        () => exportAROverpayments(dateRange.startDate, dateRange.endDate),
+        'AR_Overpayments', newState, setArState);
     } catch {
       setArState(prev => ({ ...prev, loading: false }));
       toast.error('Failed to fetch AR overpayment data');
@@ -182,6 +285,38 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {/* ── Date Range Filter ── */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">Start Date</label>
+            <input
+              type="date"
+              value={dateRange.startDate}
+              onChange={e => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500">End Date</label>
+            <input
+              type="date"
+              value={dateRange.endDate}
+              onChange={e => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <button
+            onClick={() => setDateRange({ startDate: '', endDate: '' })}
+            className="px-4 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Clear Filter
+          </button>
+          {(dateRange.startDate || dateRange.endDate) && (
+            <span className="text-xs text-green-600 font-medium bg-green-50 px-3 py-2 rounded-lg">
+              Filter active: {dateRange.startDate || 'Any'} → {dateRange.endDate || 'Any'}
+            </span>
+          )}
+        </div>
         {/* ── Row 1: Invoice + Bill ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <ModuleCard

@@ -3,10 +3,12 @@ import express from "express";
 import cors from "cors";
 import session from "express-session";
 import sessionFileStore from "session-file-store";
+import connectDB from './src/config/database.js';
 
 import authRoutes from "./src/routes/auth.routes.js";
 import allocationRoutes from "./src/routes/allocation.routes.js";
 
+await connectDB();
 dotenv.config();
 
 const app = express();
@@ -14,7 +16,10 @@ const FileStore = sessionFileStore(session);
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: [
+      process.env.FRONTEND_URL,
+      'https://unartistic-extroversively-cornell.ngrok-free.dev',
+    ],
     credentials: true,
   })
 );
@@ -26,16 +31,16 @@ app.use(
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    // ✅ File store — refresh pe logout nahi hoga
     store: new FileStore({
-      path: './sessions',        // sessions folder mein save hoga
-      ttl: 86400,                // 24 hours
+      path: './sessions',
+      ttl: 86400,
       retries: 1,
     }),
     cookie: {
-      secure: false,
+      secure: false,        // ← false rakho (ngrok HTTP internally)
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,  // 24 hours
+      maxAge: 24 * 60 * 60 * 1000,
+      sameSite: 'lax',      // ← Yeh add karo
     },
   })
 );
